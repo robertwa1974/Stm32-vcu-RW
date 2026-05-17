@@ -100,6 +100,7 @@
 #include "utils.h"
 #include "vag_sbox.h"
 #include "vehicle.h"
+#include "vescinv.h"
 #include <libopencm3/stm32/can.h>
 #include <libopencm3/stm32/exti.h>
 #include <libopencm3/stm32/iwdg.h>
@@ -142,6 +143,7 @@ static bool OutlanderCAN = false;
 static bool ExtHVreq = false;
 static bool CheckHVIL = 0;
 static bool HVILok = 0;
+static bool driveInhibited = false; // Set true when DriveInhibit param is active
 
 static volatile unsigned days = 0, hours = 0, minutes = 0, seconds = 0,
                          alarm = 0; // != 0 when alarm is pending
@@ -204,6 +206,7 @@ static DCDC *selectedDCDC = &DCDCnone;
 static Can_OBD2 canOBD2;
 static Shifter shifterNone;
 static RearOutlanderInverter rearoutlanderInv;
+static VescInverter vescInv;
 static LinBus *lin;
 static Preheater preheater;
 
@@ -634,6 +637,10 @@ static void Ms10Task(void) {
     torquePercent *= requestedDirection; // torque requests invert when reverse
                                          // direction is selected
 
+    // Drive inhibit: zero torque demand regardless of throttle input
+    if (driveInhibited)
+      torquePercent = 0;
+
     selectedInverter->Task10Ms();
   } else {
     torquePercent = 0;
@@ -686,6 +693,34 @@ static void Ms10Task(void) {
              : STAT_POTPRESSED;
   stt |= udc >= Param::GetFloat(Param::udcsw) ? STAT_NONE : STAT_UDCBELOWUDCSW;
   stt |= udc < Param::GetFloat(Param::udclim) ? STAT_NONE : STAT_UDCLIM;
+
+  // DriveInhibit evaluation
+  // Mode 0 = Off (no inhibit)
+  // Mode 1 = Plug detect: inhibit drive whenever a charge plug is present
+  {
+    int inhibitMode = Param::GetInt(Param::DriveInhibit);
+    if (inhibitMode == 0)
+    {
+      driveInhibited = false;
+    }
+    else if (inhibitMode == 1)
+    {
+      // PlugDet is set/cleared by the PP ADC logic in Ms200Task
+      driveInhibited = (Param::GetInt(Param::PlugDet) != 0);
+    }
+    else if (inhibitMode == 2)
+    {
+      // Always inhibit — unconditional immobilizer.
+      // Set DriveInhibit=2 from M5Dial (or CAN SDO) to lock drive.
+      // Set DriveInhibit=0 to unlock.
+      driveInhibited = true;
+    }
+    // Future modes can be added here with else if (inhibitMode == N)
+  }
+  if (driveInhibited)
+    stt |= STAT_DRIVEINHIBIT;
+
+  Param::SetInt(Param::DriveInhibited, driveInhibited ? 1 : 0);
   Param::SetInt(Param::status, stt);
 
   switch (opmode) {
@@ -718,11 +753,12 @@ static void Ms10Task(void) {
 
     if (Param::GetInt(Param::pot) < Param::GetInt(Param::potmin)) {
       if (selectedVehicle->Start() && selectedVehicle->Ready() &&
-          (HVILok > 0)) {
+          (HVILok > 0) && !driveInhibited) {
         StartSig = true;
         opmode = MOD_PRECHARGE; // proceed to precharge if 1)throttle not
                                 // pressed , 2)ign on , 3)start signal rx, 4) HV
-                                // IL input is grounded if selected.
+                                // IL input is grounded if selected,
+                                // 5) drive not inhibited.
         rlyDly = 25;            // Recharge sequence timer
         vehicleStartTime = rtc_get_counter_val();
         initbyStart = true;
@@ -842,6 +878,12 @@ static void Ms10Task(void) {
       opmode = MOD_OFF;
       rlyDly = 250; // Recharge sequence timer for delayed shutdown
     }
+    if (driveInhibited) {
+      opmode = MOD_OFF;         // Immobilizer activated — shut down drive
+      rlyDly = 250;             // Normal delayed shutdown sequence
+      // Note: STAT_DRIVEINHIBIT is set in the status word; no error is
+      // posted because inhibit is an intentional user command, not a fault.
+    }
     Param::SetInt(Param::opmode, opmode);
     break;
 
@@ -913,6 +955,9 @@ static void UpdateInv() {
   case InvModes::RearOutlander:
     selectedInverter = &rearoutlanderInv;
     OutlanderCAN = true;
+    break;
+  case InvModes::VESC:
+    selectedInverter = &vescInv;
     break;
   }
   // This will call SetCanFilters() via the Clear Callback

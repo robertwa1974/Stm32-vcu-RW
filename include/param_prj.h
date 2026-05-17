@@ -19,7 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define VER 2.40A
+#define VER 2.40A-RW
 
 /* Entries must be ordered as follows:
    1. Saveable parameters (id != 0)
@@ -30,7 +30,7 @@
 /*              category     name         unit       min     max     default id
  */
 #define PARAM_LIST                                                             \
-  PARAM_ENTRY(CAT_SETUP, Inverter, INVMODES, 0, 8, 0, 5)                       \
+  PARAM_ENTRY(CAT_SETUP, Inverter, INVMODES, 0, 9, 0, 5)                       \
   PARAM_ENTRY(CAT_SETUP, Vehicle, VEHMODES, 0, 8, 0, 6)                        \
   PARAM_ENTRY(CAT_SETUP, GearLvr, SHIFTERS, 0, 4, 0, 108)                      \
   PARAM_ENTRY(CAT_SETUP, Transmission, TRNMODES, 0, 1, 0, 78)                  \
@@ -51,7 +51,7 @@
   PARAM_ENTRY(CAT_SETUP, MotActive, MotorsAct, 0, 3, 0, 129)                   \
   PARAM_ENTRY(CAT_SETUP, ConfigCANOI, ONOFF, 0, 1, 0, 149)                     \
   PARAM_ENTRY(CAT_SETUP, UseRS232, ONOFF, 0, 1, 0, 155)                        \
-  PARAM_ENTRY(CAT_SETUP, DriveInhibit, DRIVEINHIBITMODES, 0, 1, 0, 156)        \
+  PARAM_ENTRY(CAT_SETUP, DriveInhibit, DRIVEINHIBITMODES, 0, 2, 0, 156)        \
   PARAM_ENTRY(CAT_THROTTLE, potmin, "dig", 0, 4095, 0, 7)                      \
   PARAM_ENTRY(CAT_THROTTLE, potmax, "dig", 0, 4095, 4095, 8)                   \
   PARAM_ENTRY(CAT_THROTTLE, pot2min, "dig", 0, 4095, 4095, 9)                  \
@@ -267,9 +267,10 @@
   VALUE_ENTRY(DMA_TxComplete, ONOFF, 2120)                                     \
   VALUE_ENTRY(DMA_RxTimeout, "", 2121)                                         \
   VALUE_ENTRY(DMA_ConsecFail, "", 2122)                                        \
-  VALUE_ENTRY(HTM_State, "", 2123)
+  VALUE_ENTRY(HTM_State, "", 2123)                                              \
+  VALUE_ENTRY(DriveInhibited, ONOFF, 2124)
 
-// Next value Id: 2124
+// Next value Id: 2125
 
 // Dead params
 /*
@@ -304,7 +305,7 @@
   "0=Button, 1=Switch, 2=ButtonReversed, 3=SwitchReversed, 4=DefaultForward"
 #define INVMODES                                                               \
   "0=None, 1=Leaf_Gen1, 2=GS450H, 3=UserCAN, 4=OpenI, 5=Prius_Gen3, "          \
-  "6=Outlander, 7=GS300H, 8=RearOutlander"
+  "6=Outlander, 7=GS300H, 8=RearOutlander, 9=VESC"
 #define PLTMODES                                                               \
   "0=Absent, 1=ACStd, 2=ACchg, 3=Error, 4=CCS_Not_Rdy, 5=CCS_Rdy, 6=Static"
 #define VEHMODES                                                               \
@@ -319,7 +320,7 @@
 #define DCDCTYPES "0=NoDCDC, 1=TeslaG2, 2=DCDCElcon"
 #define STATUS                                                                 \
   "0=None, 1=UdcLow, 2=UdcHigh, 4=UdcBelowUdcSw, 8=UdcLim, 16=EmcyStop, "      \
-  "32=MProt, 64=PotPressed, 128=TmpHs, 256=WaitStart"
+  "32=MProt, 64=PotPressed, 128=TmpHs, 256=WaitStart, 512=DriveInhibit"
 #define CCS_STATUS                                                             \
   "0=NotRdy, 1=ready, 2=SWoff, 3=interruption, 4=Prech, 5=insulmon, 6=estop, " \
   "7=malfunction, 15=invalid"
@@ -371,7 +372,7 @@
   "0=None, 1=UDClimLow, 2=UDClimHigh, 4=IDClimLow, 8=IDClimHigh, 16=TempLim"
 #define DIRLIM "0=None, 1=SpeedThres, 2=SpeedBrake"
 #define ABOVEBELOW "0=BelowOF,1=BelowScale, 2=AboveOF, 3=AboveScale"
-#define DRIVEINHIBITMODES "0=Off,1=Plug detect"
+#define DRIVEINHIBITMODES "0=Off,1=PlugDetect,2=Always"
 
 #define CAN_PERIOD_100MS 0
 #define CAN_PERIOD_10MS 1
@@ -409,7 +410,8 @@ enum InvModes {
   Prius_Gen3 = 5,
   Outlander = 6,
   GS300H = 7,
-  RearOutlander = 8
+  RearOutlander = 8,
+  VESC = 9
 };
 
 enum ChargeModes {
@@ -505,7 +507,8 @@ enum status {
   STAT_MPROT = 32,
   STAT_POTPRESSED = 64,
   STAT_TMPHS = 128,
-  STAT_WAITSTART = 256
+  STAT_WAITSTART = 256,
+  STAT_DRIVEINHIBIT = 512
 };
 
 enum ccs_status {

@@ -626,22 +626,69 @@ void ProcessCruiseControlButtons() {
 void CpSpoofOutput() {
   uint16_t CpVal = 0;
 
-  if (Param::GetInt(Param::interface) == ChargeInterfaces::i3LIM ||
-      Param::GetInt(Param::interface) == ChargeInterfaces::CPC ||
-      Param::GetInt(Param::interface) == ChargeInterfaces::Foccci) {
+  // FIX (v2.30A bug): CpVal was only set for i3LIM/CPC/Foccci interfaces,
+  // leaving it at 0 for Outlander (interface=Unused), Elcon, and all other
+  // charger types that also require a spoofed CP signal to their OBC.
+  //
+  // The original code incorrectly used the charge *interface* param to gate
+  // CP spoof, but interface=Unused is correct for Outlander+Elcon builds.
+  // CpSpoof must be driven by the charge *mode* (chargemodes param) instead,
+  // covering every OBC that needs a J1772 CP signal.
+  //
+  // Additional fix: gate the entire function on MOD_CHARGE so the PWM output
+  // returns to 0 when not charging. The previous unconditional call meant the
+  // pin was driven continuously, and the commented-out opmode gate below was
+  // a no-op (missing parentheses on the function call).
+
+  int opmode = Param::GetInt(Param::opmode);
+  int chgInterface = Param::GetInt(Param::interface);
+  int chgMode = Param::GetInt(Param::chargemodes);
+
+  // Determine if CpSpoof should be active and compute duty cycle value.
+  // Two cases need a spoofed CP output:
+  //
+  // CASE 1: Charge interface (i3LIM / CPC / Foccci) — these interfaces read
+  //         PilotLim (amps offered by EVSE) from their own CAN/protocol and
+  //         write it into PilotLim spot value. Use that to encode duty cycle.
+  //
+  // CASE 2: Charger-only OBCs with no charge interface (Outlander, Elcon,
+  //         Volt/Ampera, Tesla OI, MG Gen2, ExtDigi) — these use
+  //         interface=Unused. Drive CP_PWM directly from PilotLim which the
+  //         user sets manually to match their EVSE current rating.
+  //
+  // CHAdeMO is explicitly excluded — it uses CAN + 12V signals, not J1772 CP.
+  // Leaf PDM is excluded — it handles CP internally; no CP wiring to VCU.
+  // ChargeModes::Off is excluded — no charging, output stays 0.
+
+  bool interfaceNeedsSpoof = (chgInterface == ChargeInterfaces::i3LIM ||
+                               chgInterface == ChargeInterfaces::CPC ||
+                               chgInterface == ChargeInterfaces::Foccci);
+
+  bool chargerNeedsSpoof = (chgMode == ChargeModes::Out_lander ||
+                             chgMode == ChargeModes::Elcon       ||
+                             chgMode == ChargeModes::Volt_Ampera ||
+                             chgMode == ChargeModes::TeslaOI     ||
+                             chgMode == ChargeModes::MGgen2      ||
+                             chgMode == ChargeModes::EXT_DIGI);
+
+  if (opmode == MOD_CHARGE && (interfaceNeedsSpoof || chargerNeedsSpoof)) {
+    // J1772 duty cycle encoding: amps = duty% * 0.6 (for 10-85% range)
+    // Inverse: duty% = amps / 0.6 = amps * 1.6667
+    // Timer counts: duty_counts = duty% * 40 (timer period = 4000 counts @ 1kHz)
     CpVal = float(Param::GetInt(Param::PilotLim) * 1.6667);
     Param::SetInt(Param::CP_PWM, CpVal);
     CpVal = (Param::GetInt(Param::CP_PWM) * 40);
   }
+  // If opmode != MOD_CHARGE, CpVal stays 0 — PWM output driven low.
 
   if (Param::GetInt(Param::PWM1Func) == IOMatrix::CP_SPOOF) {
-    timer_set_oc_value(TIM3, TIM_OC1, CpVal); // No duty set here
+    timer_set_oc_value(TIM3, TIM_OC1, CpVal);
   }
   if (Param::GetInt(Param::PWM2Func) == IOMatrix::CP_SPOOF) {
-    timer_set_oc_value(TIM3, TIM_OC2, CpVal); // No duty set here
+    timer_set_oc_value(TIM3, TIM_OC2, CpVal);
   }
   if (Param::GetInt(Param::PWM3Func) == IOMatrix::CP_SPOOF) {
-    timer_set_oc_value(TIM3, TIM_OC3, CpVal); // No duty set here
+    timer_set_oc_value(TIM3, TIM_OC3, CpVal);
   }
 }
 
