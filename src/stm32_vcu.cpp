@@ -101,6 +101,7 @@
 #include "vag_sbox.h"
 #include "vehicle.h"
 #include "vescinv.h"
+#include "benchpwminv.h"
 #include <libopencm3/stm32/can.h>
 #include <libopencm3/stm32/exti.h>
 #include <libopencm3/stm32/iwdg.h>
@@ -207,6 +208,7 @@ static Can_OBD2 canOBD2;
 static Shifter shifterNone;
 static RearOutlanderInverter rearoutlanderInv;
 static VescInverter vescInv;
+static BenchPwmInverter benchPwmInv;
 static LinBus *lin;
 static Preheater preheater;
 
@@ -958,6 +960,9 @@ static void UpdateInv() {
     break;
   case InvModes::VESC:
     selectedInverter = &vescInv;
+    break;
+  case InvModes::BenchPWM:
+    selectedInverter = &benchPwmInv;
     break;
   }
   // This will call SetCanFilters() via the Clear Callback
