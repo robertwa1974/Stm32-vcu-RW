@@ -97,7 +97,7 @@ void VescInverter::Task100Ms()
 //   range: -100000 = -100% (full regen), +100000 = +100% (full drive)
 //   VESC scales this against its own configured current limits.
 //
-// CRITICAL: 4th argument to Send() must be true for 29-bit extended frame.
+// CRITICAL: VESC needs 29-bit extended frames; Stm32Can::Send() picks extended for IDs > 0x7FF.
 //   VESC ignores standard 11-bit frames.
 // -------------------------------------------------------------------
 void VescInverter::SendRelativeCurrentCommand(float torquePercent)
@@ -116,8 +116,8 @@ void VescInverter::SendRelativeCurrentCommand(float torquePercent)
     // Post torque value to web UI
     Param::SetInt(Param::torque, value);
 
-    // true = 29-bit extended frame — required for VESC CAN protocol
-    can->Send(VESC_EID(VESC_PKT_SET_CURRENT_REL), buf, 4, true);
+    // IDs > 0x7FF are sent as 29-bit extended frames by Stm32Can::Send()
+    can->Send(VESC_EID(VESC_PKT_SET_CURRENT_REL), buf, 4);
 }
 
 // -------------------------------------------------------------------
